@@ -1,4 +1,3 @@
-// app/page.js
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -17,9 +16,10 @@ export default function HomePage() {
       .from('areas')
       .select('id, name, sort')
       .order('sort', { ascending: true });
-    if (!error) {
-      setAreas(data || []);
-      if (data && data.length && !activeArea) setActiveArea(data[0].id);
+
+    if (!error && data) {
+      setAreas(data);
+      if (!activeArea && data.length) setActiveArea(data[0].id);
     }
     setLoading(false);
   }
@@ -31,6 +31,7 @@ export default function HomePage() {
       .select('id, name, status')
       .eq('area_id', areaId)
       .order('name', { ascending: true });
+
     setTables(data || []);
   }
 
@@ -50,39 +51,20 @@ export default function HomePage() {
 
   return (
     <main style={{ padding: 16 }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          marginBottom: 12,
-        }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <h3 style={{ margin: '0 0 4px' }}>Chọn khu &amp; bàn</h3>
-          <small>Khu A/B/C/D và khu “Mang về”.</small>
+          <small>Khu A/B/C/D và khu “Mang về” đã được tạo sẵn trong schema.</small>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Link href="/menu">
-            <button>Quản lý Menu</button>
-          </Link>
-          <Link href="/areas">
-            <button>Quản lý Khu &amp; Bàn</button>
-          </Link>
-          <Link href="/history/today">
-            <button>Lịch sử hôm nay</button>
-          </Link>
+          <Link href="/menu"><button>Quản lý Menu</button></Link>
+          <Link href="/areas"><button>Quản lý Khu &amp; Bàn</button></Link>
+          <Link href="/history/today"><button>Lịch sử hôm nay</button></Link>
         </div>
       </div>
 
       {/* Tabs khu */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 8,
-          marginBottom: 12,
-        }}
-      >
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         {areas.map((a) => (
           <button
             key={a.id}
@@ -90,8 +72,7 @@ export default function HomePage() {
             style={{
               padding: '6px 10px',
               borderRadius: 20,
-              border:
-                activeArea === a.id ? '2px solid #1976d2' : '1px solid #ccc',
+              border: activeArea === a.id ? '2px solid #1976d2' : '1px solid #ccc',
               background: activeArea === a.id ? '#e3f2fd' : '#fff',
               cursor: 'pointer',
             }}
@@ -128,9 +109,8 @@ export default function HomePage() {
             </div>
           </Link>
         ))}
-
         {!tables.length && !loading && (
-          <div>Chưa có bàn trong khu này – vào “Quản lý Khu & Bàn” để tạo.</div>
+          <div>Chưa có bàn trong khu này. Vào “Quản lý Khu & Bàn” để tạo.</div>
         )}
       </div>
     </main>
