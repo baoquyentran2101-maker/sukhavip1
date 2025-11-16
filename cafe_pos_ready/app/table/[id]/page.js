@@ -71,9 +71,10 @@ export default function TablePage({ params }) {
 
       // món: cho phép is_active = true hoặc null
       const { data: it } = await supabase
-        .from('menu_items')
-        .select('id, group_id, name, price, is_active, sort')
-        .order('sort', { ascending: true });
+  .from('menu_items')
+  .select('id, group_id, name, price, is_active, sort')
+  .eq('is_active', true)   // chỉ lấy món đang bật
+  .order('sort', { ascending: true });
       setItems(it || []);
 
       await loadOrderItems(existingOrder.id);
@@ -103,9 +104,9 @@ export default function TablePage({ params }) {
   }
 
   const itemsOfGroup = useMemo(
-    () => items.filter((i) => i.group_id === activeGroup),
-    [items, activeGroup]
-  );
+  () => items.filter((i) => i.group_id === activeGroup),
+  [items, activeGroup]
+);
 
   // thêm món vào order
   async function addItem(itemId) {
