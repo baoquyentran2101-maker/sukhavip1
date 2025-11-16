@@ -9,29 +9,46 @@ export default function MenuPage() {
   const [items, setItems] = useState([]);
   const [activeGroup, setActiveGroup] = useState(null);
 
-  // form nhóm
+  // input nhóm
   const [gName, setGName] = useState('');
   const [gSort, setGSort] = useState(0);
 
-  // form món
+  // input món
   const [iName, setIName] = useState('');
-  const [iPrice, setIPrice] = useState(0);
+  const [iPrice, setIPrice] = useState('');
   const [iSort, setISort] = useState(0);
 
+  // tải dữ liệu
   async function loadAll() {
     // nhóm
-    const { data: g } = await supabase
+    const { data: g, error: gErr } = await supabase
       .from('menu_groups')
       .select('id, name, sort')
       .order('sort', { ascending: true });
+
+    if (gErr) {
+      console.error(gErr);
+      alert('Lỗi load nhóm món');
+      return;
+    }
+
     setGroups(g || []);
-    if (!activeGroup && g && g.length) setActiveGroup(g[0].id);
+    if (!activeGroup && g && g.length) {
+      setActiveGroup(g[0].id);
+    }
 
     // món
-    const { data: it } = await supabase
+    const { data: it, error: iErr } = await supabase
       .from('menu_items')
       .select('id, group_id, name, price, is_active, sort')
       .order('sort', { ascending: true });
+
+    if (iErr) {
+      console.error(iErr);
+      alert('Lỗi load món');
+      return;
+    }
+
     setItems(it || []);
   }
 
@@ -44,57 +61,104 @@ export default function MenuPage() {
     [items, activeGroup]
   );
 
-  // ===== NHÓM MÓN =====
-
+  // THÊM NHÓM
   async function addGroup() {
-    if (!gName.trim()) return;
-    await supabase.from('menu_groups').insert({
+    if (!gName.trim()) {
+      alert('Nhập tên nhóm');
+      return;
+    }
+    const { error } = await supabase.from('menu_groups').insert({
       name: gName.trim(),
       sort: Number(gSort) || 0,
     });
+    if (error) {
+      console.error(error);
+      alert('Lỗi khi thêm nhóm');
+      return;
+    }
     setGName('');
     setGSort(0);
-    loadAll();
+    await loadAll();
   }
 
+  // CẬP NHẬT NHÓM
   async function updateGroup(id, patch) {
-    await supabase.from('menu_groups').update(patch).eq('id', id);
-    loadAll();
+    const { error } = await supabase.from('menu_groups').update(patch).eq('id', id);
+    if (error) {
+      console.error(error);
+      alert('Lỗi khi sửa nhóm');
+    } else {
+      await loadAll();
+    }
   }
 
   async function deleteGroup(id) {
     if (!confirm('Xoá nhóm này và toàn bộ món trong nhóm?')) return;
-    await supabase.from('menu_groups').delete().eq('id', id);
+    const { error } = await supabase.from('menu_groups').delete().eq('id', id);
+    if (error) {
+      console.error(error);
+      alert('Lỗi khi xoá nhóm');
+      return;
+    }
     if (activeGroup === id) setActiveGroup(null);
-    loadAll();
+    await loadAll();
   }
 
-  // ===== MÓN =====
-
+  // THÊM MÓN
   async function addItem() {
-    if (!iName.trim() || !activeGroup) return;
-    await supabase.from('menu_items').insert({
+    if (!activeGroup) {
+      alert('Chưa chọn nhóm món');
+      return;
+    }
+    if (!iName.trim()) {
+      alert('Nhập tên món');
+      return;
+    }
+    const priceNumber = Number(iPrice);
+    if (Number.isNaN(priceNumber)) {
+      alert('Giá phải là số');
+      return;
+    }
+
+    const { error } = await supabase.from('menu_items').insert({
       group_id: activeGroup,
       name: iName.trim(),
-      price: Number(iPrice) || 0,
+      price: priceNumber,
       sort: Number(iSort) || 0,
-      is_active: true,          // ✅ luôn hiển thị
+      is_active: true,
     });
+
+    if (error) {
+      console.error(error);
+      alert('Lỗi khi thêm món');
+      return;
+    }
+
     setIName('');
-    setIPrice(0);
+    setIPrice('');
     setISort(0);
-    loadAll();
+    await loadAll();
   }
 
   async function updateItem(id, patch) {
-    await supabase.from('menu_items').update(patch).eq('id', id);
-    loadAll();
+    const { error } = await supabase.from('menu_items').update(patch).eq('id', id);
+    if (error) {
+      console.error(error);
+      alert('Lỗi khi sửa món');
+    } else {
+      await loadAll();
+    }
   }
 
   async function deleteItem(id) {
     if (!confirm('Xoá món này?')) return;
-    await supabase.from('menu_items').delete().eq('id', id);
-    loadAll();
+    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    if (error) {
+      console.error(error);
+      alert('Lỗi khi xoá món');
+    } else {
+      await loadAll();
+    }
   }
 
   return (
@@ -108,24 +172,22 @@ export default function MenuPage() {
       <section style={{ border: '1px solid #eee', borderRadius: 8, padding: 12, marginBottom: 16 }}>
         <h4>Nhóm món</h4>
 
-        {/* form thêm nhóm */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 8, marginBottom: 10 }}>
-          <input
-            placeholder="Tên nhóm (vd: Cà phê)"
-            value={gName}
-            onChange={(e) => setGName(e.target.value)}
-          />
-          <input
-            type="number"
-            placeholder="Sort"
-            value={gSort}
-            onChange={(e) => setGSort(e.target.value)}
-          />
-          <button onClick={addGroup}>Thêm nhóm</button>
-        </div>
+        <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto', gap: 8 }}>
+            <input
+              placeholder="Tên nhóm mới (Cà phê, Trà...)"
+              value={gName}
+              onChange={(e) => setGName(e.target.value)}
+            />
+            <input
+              type="number"
+              placeholder="Sort"
+              value={gSort}
+              onChange={(e) => setGSort(e.target.value)}
+            />
+            <button onClick={addGroup}>Thêm nhóm</button>
+          </div>
 
-        {/* danh sách nhóm */}
-        <div style={{ display: 'grid', gap: 6 }}>
           {groups.map((g) => (
             <div
               key={g.id}
@@ -143,14 +205,12 @@ export default function MenuPage() {
               />
               <input
                 value={g.name}
-                onChange={(e) => updateGroup(g.id, { name: e.target.value, sort: g.sort })}
+                onChange={(e) => updateGroup(g.id, { name: e.target.value })}
               />
               <input
                 type="number"
                 value={g.sort ?? 0}
-                onChange={(e) =>
-                  updateGroup(g.id, { name: g.name, sort: Number(e.target.value) || 0 })
-                }
+                onChange={(e) => updateGroup(g.id, { sort: Number(e.target.value) || 0 })}
               />
               <button onClick={() => deleteGroup(g.id)} style={{ color: '#b00020' }}>
                 Xoá
@@ -167,7 +227,6 @@ export default function MenuPage() {
           <b>{groups.find((g) => g.id === activeGroup)?.name || 'Chưa chọn nhóm'}</b>
         </h4>
 
-        {/* form thêm món – có TÊN + GIÁ + SORT */}
         {activeGroup && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 80px auto', gap: 8 }}>
             <input
@@ -177,7 +236,7 @@ export default function MenuPage() {
             />
             <input
               type="number"
-              placeholder="Giá (đ)"
+              placeholder="Giá"
               value={iPrice}
               onChange={(e) => setIPrice(e.target.value)}
             />
@@ -191,7 +250,6 @@ export default function MenuPage() {
           </div>
         )}
 
-        {/* danh sách món */}
         <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
           {itemsByGroup.map((it) => (
             <div
@@ -203,10 +261,16 @@ export default function MenuPage() {
                 alignItems: 'center',
               }}
             >
-              <input
-                value={it.name}
-                onChange={(e) => updateItem(it.id, { name: e.target.value })}
-              />
+              <div>
+                <input
+                  value={it.name}
+                  onChange={(e) => updateItem(it.id, { name: e.target.value })}
+                />
+                <div style={{ fontSize: 11, opacity: 0.7 }}>
+                  {/* chỉ hiển thị – không lưu số lượng ở đây */}
+                  Mặc định gọi 1 ly, số lượng nằm ở phần Order, không nằm trong Menu.
+                </div>
+              </div>
               <input
                 type="number"
                 value={it.price}
@@ -223,7 +287,9 @@ export default function MenuPage() {
               />
               <select
                 value={it.is_active ? 'true' : 'false'}
-                onChange={(e) => updateItem(it.id, { is_active: e.target.value === 'true' })}
+                onChange={(e) =>
+                  updateItem(it.id, { is_active: e.target.value === 'true' })
+                }
               >
                 <option value="true">Hiển thị</option>
                 <option value="false">Ẩn</option>
@@ -233,6 +299,7 @@ export default function MenuPage() {
               </button>
             </div>
           ))}
+          {!itemsByGroup.length && <div>Nhóm này chưa có món.</div>}
         </div>
       </section>
     </main>
