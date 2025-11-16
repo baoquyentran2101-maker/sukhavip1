@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabaseClient';
-import Link from 'next/link';
 
 export default function TablePage({ params }) {
   const tableId = params.id;
@@ -24,7 +24,7 @@ export default function TablePage({ params }) {
     async function init() {
       setLoading(true);
 
-      // Lấy thông tin bàn
+      // lấy thông tin bàn
       const { data: t } = await supabase
         .from('cafe_tables')
         .select('id, name, status')
@@ -32,12 +32,12 @@ export default function TablePage({ params }) {
         .single();
       setTable(t);
 
-      // Nếu bàn trống thì đổi sang in_use
+      // nếu bàn trống => chuyển sang in_use
       if (t && t.status === 'empty') {
         await supabase.from('cafe_tables').update({ status: 'in_use' }).eq('id', tableId);
       }
 
-      // Tìm order open, nếu chưa có thì tạo
+      // tìm order đang mở
       let { data: existingOrder } = await supabase
         .from('orders')
         .select('id')
@@ -45,8 +45,9 @@ export default function TablePage({ params }) {
         .eq('status', 'open')
         .maybeSingle();
 
+      // nếu chưa có => tạo mới
       if (!existingOrder) {
-        const { data: inserted } = await supabase
+        const { data: inserted, error } = await supabase
           .from('orders')
           .insert({
             table_id: tableId,
@@ -55,12 +56,12 @@ export default function TablePage({ params }) {
           })
           .select('id')
           .single();
+        if (error) console.error(error);
         existingOrder = inserted;
       }
-
       setOrderId(existingOrder.id);
 
-      // Lấy menu
+      // nhóm món
       const { data: g } = await supabase
         .from('menu_groups')
         .select('id, name, sort')
@@ -68,18 +69,18 @@ export default function TablePage({ params }) {
       setGroups(g || []);
       if (g && g.length) setActiveGroup(g[0].id);
 
+      // món: cho phép is_active = true hoặc null
       const { data: it } = await supabase
         .from('menu_items')
         .select('id, group_id, name, price, is_active, sort')
-        .eq('is_active', true)
         .order('sort', { ascending: true });
       setItems(it || []);
 
-      await reloadOrderItems(existingOrder.id);
+      await loadOrderItems(existingOrder.id);
       setLoading(false);
     }
 
-    async function reloadOrderItems(oid) {
+    async function loadOrderItems(oid) {
       const { data } = await supabase
         .from('order_items')
         .select('id, item_id, item_name, price, qty, amount')
@@ -89,12 +90,9 @@ export default function TablePage({ params }) {
     }
 
     init();
-
-    // function dùng lại
-    TablePage.reload = reloadOrderItems;
   }, [tableId]);
 
-  async function reloadOrderItemsLocal() {
+  async function reloadOrderItems() {
     if (!orderId) return;
     const { data } = await supabase
       .from('order_items')
@@ -109,6 +107,7 @@ export default function TablePage({ params }) {
     [items, activeGroup]
   );
 
+  // thêm món vào order
   async function addItem(itemId) {
     if (!orderId) return;
     const item = items.find((i) => i.id === itemId);
@@ -129,7 +128,7 @@ export default function TablePage({ params }) {
         qty: 1,
       });
     }
-    await reloadOrderItemsLocal();
+    await reloadOrderItems();
   }
 
   async function changeQty(id, delta) {
@@ -141,7 +140,7 @@ export default function TablePage({ params }) {
     } else {
       await supabase.from('order_items').update({ qty: newQty }).eq('id', id);
     }
-    await reloadOrderItemsLocal();
+    await reloadOrderItems();
   }
 
   const total = useMemo(
@@ -155,20 +154,27 @@ export default function TablePage({ params }) {
       return;
     }
 
-    // Lưu payment
-    await supabase.from('payments').insert({
+    const paidAmount = total;
+
+    // lưu payment
+    const { error: payError } = await supabase.from('payments').insert({
       order_id: orderId,
       method,
-      paid_amount: total,
+      paid_amount: paidAmount,
     });
+    if (payError) {
+      console.error(payError);
+      alert('Lỗi khi lưu thanh toán');
+      return;
+    }
 
-    // Đóng order, trả bàn về empty
+    // cập nhật trạng thái
     await supabase.from('orders').update({ status: 'paid' }).eq('id', orderId);
     if (table) {
       await supabase.from('cafe_tables').update({ status: 'empty' }).eq('id', table.id);
     }
 
-    alert('Đã thanh toán xong, hoá đơn được lưu vào lịch sử hôm nay.');
+    alert('Đã thanh toán thành công');
     router.push('/history/today');
   }
 
@@ -188,9 +194,11 @@ export default function TablePage({ params }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 12 }}>
-        {/* Cột chọn món */}
+        {/* LEFT: chọn món */}
         <section style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }}>
           <h4>Chọn món</h4>
+
+          {/* tabs nhóm */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
             {groups.map((g) => (
               <button
@@ -207,6 +215,8 @@ export default function TablePage({ params }) {
               </button>
             ))}
           </div>
+
+          {/* danh sách món */}
           <div
             style={{
               display: 'grid',
@@ -233,12 +243,18 @@ export default function TablePage({ params }) {
                 </div>
               </button>
             ))}
+            {!itemsOfGroup.length && (
+              <div style={{ gridColumn: '1 / -1', fontSize: 13, opacity: 0.7 }}>
+                Nhóm này chưa có món hoặc tất cả đang bị ẩn.
+              </div>
+            )}
           </div>
         </section>
 
-        {/* Cột đơn hiện tại */}
+        {/* RIGHT: đơn hiện tại */}
         <section style={{ border: '1px solid #eee', borderRadius: 8, padding: 10 }}>
           <h4>Đơn hiện tại</h4>
+
           <div
             style={{
               maxHeight: 360,
@@ -293,15 +309,8 @@ export default function TablePage({ params }) {
             <button onClick={() => setShowCheckout(true)}>Thanh toán</button>
           </div>
 
-          {/* Popup thanh toán */}
           {showCheckout && (
-            <div
-              style={{
-                marginTop: 10,
-                borderTop: '1px dashed #ccc',
-                paddingTop: 8,
-              }}
-            >
+            <div style={{ marginTop: 10, borderTop: '1px dashed #ccc', paddingTop: 8 }}>
               <div style={{ marginBottom: 6, fontWeight: 600 }}>Xác nhận thanh toán</div>
               <div style={{ maxHeight: 180, overflow: 'auto', marginBottom: 6 }}>
                 {orderItems.map((oi) => (
@@ -312,7 +321,9 @@ export default function TablePage({ params }) {
                     <span>
                       {oi.item_name} x {oi.qty}
                     </span>
-                    <span>{Number(oi.amount).toLocaleString('vi-VN')} đ</span>
+                    <span>
+                      {Number(oi.amount || oi.qty * oi.price).toLocaleString('vi-VN')} đ
+                    </span>
                   </div>
                 ))}
               </div>
